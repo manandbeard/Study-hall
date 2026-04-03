@@ -1,0 +1,176 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerId;
+    }
+
+    function isDocUser() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+    
+    function uidUnchanged(field) {
+      return !(field in request.resource.data) || request.resource.data[field] == request.auth.uid;
+    }
+    
+    function uidNotModified(field) {
+      return !(field in request.resource.data) || request.resource.data[field] == resource.data[field];
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+    
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.email == "river.soldier@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'name', 'role', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 100 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 150 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.role in ['user', 'admin'] &&
+             data.createdAt is string;
+    }
+    
+    function isValidDeck(data) {
+      return hasOnlyAllowedFields(['name', 'description', 'ownerId', 'createdAt', 'cardCount']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.description is string && data.description.size() <= 500 &&
+             data.ownerId is string && data.ownerId.size() > 0 && data.ownerId.size() < 100 &&
+             data.createdAt is string &&
+             data.cardCount is number && data.cardCount >= 0;
+    }
+    
+    function isValidCard(data) {
+      return hasOnlyAllowedFields(['deckId', 'front', 'back', 'ownerId', 'createdAt']) &&
+             data.deckId is string && data.deckId.size() > 0 && data.deckId.size() < 100 &&
+             data.front is string && data.front.size() > 0 && data.front.size() < 2000 &&
+             data.back is string && data.back.size() > 0 && data.back.size() < 2000 &&
+             data.ownerId is string && data.ownerId.size() > 0 && data.ownerId.size() < 100 &&
+             data.createdAt is string;
+    }
+    
+    function isValidCardState(data) {
+      return hasOnlyAllowedFields(['userId', 'cardId', 'deckId', 'S', 'D', 'R', 'lastReviewedAt', 'nextReviewAt', 'reviewCount']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.cardId is string && data.cardId.size() > 0 && data.cardId.size() < 100 &&
+             data.deckId is string && data.deckId.size() > 0 && data.deckId.size() < 100 &&
+             data.S is number && data.S >= 0 &&
+             data.D is number && data.D >= 1 && data.D <= 10 &&
+             data.R is number && data.R >= 0 && data.R <= 1 &&
+             data.lastReviewedAt is string &&
+             data.nextReviewAt is string &&
+             data.reviewCount is number && data.reviewCount >= 0;
+    }
+    
+    function isValidReviewLog(data) {
+      return hasOnlyAllowedFields(['userId', 'cardId', 'deckId', 'reviewedAt', 'elapsedDays', 'grade', 'recalled']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.cardId is string && data.cardId.size() > 0 && data.cardId.size() < 100 &&
+             data.deckId is string && data.deckId.size() > 0 && data.deckId.size() < 100 &&
+             data.reviewedAt is string &&
+             data.elapsedDays is number && data.elapsedDays >= 0 &&
+             data.grade is number && data.grade >= 1 && data.grade <= 4 &&
+             data.recalled is bool;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && 
+                    isValidUser(request.resource.data) && 
+                    uidUnchanged('uid') && 
+                    (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && 
+                    isValidUser(request.resource.data) && 
+                    uidNotModified('uid') && 
+                    areImmutableFieldsUnchanged(['uid', 'createdAt']) &&
+                    ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin());
+      allow delete: if isAdmin();
+    }
+    
+    match /decks/{deckId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && 
+                    isValidDeck(request.resource.data) && 
+                    uidUnchanged('ownerId');
+      allow update: if isAuthenticated() && 
+                    isValidDeck(request.resource.data) && 
+                    isDocOwner() &&
+                    uidNotModified('ownerId') &&
+                    areImmutableFieldsUnchanged(['ownerId', 'createdAt']);
+      allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+    
+    match /cards/{cardId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && 
+                    isValidCard(request.resource.data) && 
+                    uidUnchanged('ownerId');
+      allow update: if isAuthenticated() && 
+                    isValidCard(request.resource.data) && 
+                    isDocOwner() &&
+                    uidNotModified('ownerId') &&
+                    areImmutableFieldsUnchanged(['ownerId', 'deckId', 'createdAt']);
+      allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+    
+    match /card_states/{stateId} {
+      allow read: if isAuthenticated() && (isDocUser() || isAdmin());
+      allow create: if isAuthenticated() && 
+                    isValidCardState(request.resource.data) && 
+                    uidUnchanged('userId') &&
+                    stateId == request.resource.data.userId + '_' + request.resource.data.cardId;
+      allow update: if isAuthenticated() && 
+                    isValidCardState(request.resource.data) && 
+                    isDocUser() &&
+                    uidNotModified('userId') &&
+                    areImmutableFieldsUnchanged(['userId', 'cardId', 'deckId']);
+      allow delete: if isAuthenticated() && (isDocUser() || isAdmin());
+    }
+    
+    match /reviews/{reviewId} {
+      allow read: if isAuthenticated() && (isDocUser() || isAdmin());
+      allow create: if isAuthenticated() && 
+                    isValidReviewLog(request.resource.data) && 
+                    uidUnchanged('userId');
+      allow update: if false; // Reviews are immutable logs
+      allow delete: if isAdmin();
+    }
+  }
+}

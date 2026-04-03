@@ -1,0 +1,5 @@
+{
+  "name": "MetaSRS Spaced Repetition",
+  "description": "A neural memory scheduler spaced repetition app based on the MetaSRS architecture.",
+  "requestFramePermissions": []
+}

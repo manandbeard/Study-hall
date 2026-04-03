@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Deck": {
+      "title": "Deck",
+      "description": "A collection of flashcards.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "cardCount": { "type": "number" }
+      },
+      "required": ["name", "description", "ownerId", "createdAt", "cardCount"]
+    },
+    "Card": {
+      "title": "Card",
+      "description": "A single flashcard.",
+      "type": "object",
+      "properties": {
+        "deckId": { "type": "string" },
+        "front": { "type": "string" },
+        "back": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["deckId", "front", "back", "ownerId", "createdAt"]
+    },
+    "CardState": {
+      "title": "CardState",
+      "description": "The memory state of a card for a specific user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "cardId": { "type": "string" },
+        "deckId": { "type": "string" },
+        "S": { "type": "number" },
+        "D": { "type": "number" },
+        "R": { "type": "number" },
+        "lastReviewedAt": { "type": "string", "format": "date-time" },
+        "nextReviewAt": { "type": "string", "format": "date-time" },
+        "reviewCount": { "type": "number" }
+      },
+      "required": ["userId", "cardId", "deckId", "S", "D", "R", "lastReviewedAt", "nextReviewAt", "reviewCount"]
+    },
+    "ReviewLog": {
+      "title": "ReviewLog",
+      "description": "A log of a single review event.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "cardId": { "type": "string" },
+        "deckId": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "elapsedDays": { "type": "number" },
+        "grade": { "type": "number", "enum": [1, 2, 3, 4] },
+        "recalled": { "type": "boolean" }
+      },
+      "required": ["userId", "cardId", "deckId", "reviewedAt", "elapsedDays", "grade", "recalled"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles."
+    },
+    "decks/{deckId}": {
+      "schema": { "$ref": "#/entities/Deck" },
+      "description": "Decks of flashcards."
+    },
+    "cards/{cardId}": {
+      "schema": { "$ref": "#/entities/Card" },
+      "description": "Individual flashcards."
+    },
+    "card_states/{stateId}": {
+      "schema": { "$ref": "#/entities/CardState" },
+      "description": "Memory states of cards for users. ID is {userId}_{cardId}."
+    },
+    "reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/ReviewLog" },
+      "description": "Logs of review events."
+    }
+  }
+}
